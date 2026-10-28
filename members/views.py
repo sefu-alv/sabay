@@ -1,8 +1,14 @@
 from django.contrib.auth import authenticate
 from django.contrib.auth import login as auth_login
 from django.contrib.auth import logout as auth_logout
-from django.shortcuts import redirect, render
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_POST
+
+from booking.models import JobPost
+
+from .cities import CITIES
 
 """
 Decided to use a custom login view
@@ -38,3 +44,84 @@ Using a very simple logout view atm.
 def logout(request):
     auth_logout(request)
     return redirect("home")
+
+
+"""
+autofill function uses GET method to simple backend list. 
+Will be integrate into front end later
+"""
+
+
+def city_autofill(request):
+    city = request.GET.get("city", "").strip().lower()
+
+    if not city:
+        return JsonResponse({"results": []})
+    results = [c for c in CITIES if city in c.lower()][:10]
+    return JsonResponse({"results": results})
+
+
+"""
+Will allow providers to toggle if they are available/accepting jobs.
+Hopefully this can replace the availablity deal :)
+"""
+
+
+@require_POST
+def toggle_availability(request):
+    provider = request.user.provider_profile
+    provider.is_available = "is_available" in request.POST
+    provider.save()
+    return redirect("dashboard")
+
+
+"""
+This function will allow providers to see their booking request.
+"""
+
+
+def provider_dashboard(request):
+
+    provider = getattr(request.user, "provider_profile", None)
+    now = timezone.now()
+    booking_requests = (
+        JobPost.objects.select_related("seeker__user")
+        .filter(status="open", provider=provider)
+        .order_by("-created_at")[:5]
+    )
+    upcoming_jobs = (
+        JobPost.objects.select_related("seeker__user")
+        .filter(status="accepted", provider=provider, schedule_start__gte=now)
+        .order_by("schedule_start")
+    )
+    return render(
+        request,
+        "providers/dashboard.html",
+        {
+            "provider": provider,
+            "booking_requests": booking_requests,
+            "upcoming_jobs": upcoming_jobs[:3],
+        },
+    )
+
+
+"""
+Handles if provider accepts a job or declines it
+"""
+
+
+@require_POST
+def job_response(request, job_id):
+    job = get_object_or_404(JobPost, pk=job_id)
+
+    action = request.POST.get("action")
+    print("POST data:", request.POST, "| action:", action)
+    if action == "accept":
+        job.status = "accepted"
+    elif action == "decline":
+        job.status = "declined"
+
+    job.save()
+    job.refresh_from_db()
+    print("Saved status:", repr(job.status))
+    return redirect("dashboard")
