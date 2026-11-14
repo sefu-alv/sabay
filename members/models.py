@@ -3,6 +3,8 @@ from datetime import date
 from django.conf import settings
 from django.db import models
 
+from .states import STATES
+
 # Create your models here.
 # below are the seeker and employee models.
 
@@ -64,6 +66,9 @@ class Provider(models.Model):
     # Maybe we can add something to check for a valid city
     # another model??
     city = models.CharField(max_length=50, blank=True, verbose_name="City")
+    state = models.CharField(
+        max_length=2, choices=STATES, blank=True, verbose_name="State"
+    )
     is_available = models.BooleanField(default=False, verbose_name="Is Available")
     is_provider = models.BooleanField(default=True, verbose_name="Provider Status")
 
